@@ -1,0 +1,38 @@
+num_processes: 4
+bf16: true
+dtype: bfloat16
+
+max_length: 8192
+
+attn_implementation: kernels-community/flash-attn3
+use_liger_kernel: true
+
+report_to: wandb
+logging_steps: 1
+
+learning_rate: 2e-4
+per_device_train_batch_size: 16
+gradient_accumulation_steps: 4
+max_steps: 500
+save_strategy: "steps"
+save_steps: 100
+save_total_limit: 5
+
+use_peft: true
+lora_r: 128
+lora_alpha: 256
+lora_dropout: 0.05
+lora_target_modules:
+  - all-linear
+
+push_to_hub: true
+
+model_name_or_path: "{{BASE_MODEL}}"
+dataset_name: "belati/OpenR1-Math-8192"
+dataset_text_field: "text"
+dataset_kwargs:
+  split: "{{DATASET_SPLIT}}[:2780]"
+
+output_dir: "{{OUTPUT_DIR}}"
+hub_model_id: "{{HUB_MODEL_ID}}"
+

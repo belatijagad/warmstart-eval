@@ -1,70 +1,56 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${HF_TOKEN:?Set HF_TOKEN in your environment}"
-
 HF_USER="${HF_USER:-belati}"
-HF_REPO_PREFIX="${HF_REPO_PREFIX:-qwen25-3b}"
-HF_PATH_PREFIX="${HF_PATH_PREFIX:-runs}"
-BASE_MODEL_NAME="${BASE_MODEL_NAME:-Qwen/Qwen2.5-3B-Instruct}"
-TASK="${TASK:-aime24_avg|0,aime25_avg|0,gsm8k|0}"
+# Restricted to gsm8k and aime24_avg only
+TASK="${TASK:-gsm8k|0,aime24_avg|0}"
 RESULTS_DIR="${RESULTS_DIR:-results}"
-MERGED_DIR="${MERGED_DIR:-${RESULTS_DIR}/merged}"
+
+BASE_MODELS=(
+  "Qwen/Qwen2.5-3B-Instruct"
+)
 
 SPLITS=(1a 2a full)
-CHECKPOINT_STEPS=(15 30 45)
 
 mkdir -p "$RESULTS_DIR"
-mkdir -p "$MERGED_DIR"
 
-resolve_model_path() {
-  local repo_path="$1"
-  local subfolder="$2"
+for base_model in "${BASE_MODELS[@]}"; do
+  model_slug="${base_model##*/}"
 
-  if [[ -f "${repo_path}/${subfolder}/config.json" ]]; then
-    echo "${repo_path}/${subfolder}"
-  else
-    echo "$repo_path"
-  fi
-}
+  # 1. Evaluate Base Model Baseline
+  echo "=== Evaluating base model: $base_model ==="
+  uv run lighteval vllm \
+    "model_name=${base_model},dtype=bfloat16,generation_parameters={temperature:0.7,top_p:0.95,max_new_tokens:8192}" \
+    "$TASK" --compute-generation-entropy --save-generations --output-dir "$RESULTS_DIR"
 
-resolve_adapter_path() {
-  local repo_path="$1"
-  local subfolder="$2"
-
-  if [[ -d "${repo_path}/${subfolder}/lora_adapter" ]]; then
-    echo "${repo_path}/${subfolder}/lora_adapter"
-  else
-    echo "${repo_path}/lora_adapter"
-  fi
-}
-
-for split in "${SPLITS[@]}"; do
-  repo_id="${HF_USER}/${HF_REPO_PREFIX}-${split}"
-  repo_slug="${HF_REPO_PREFIX}-${split}"
-
-  for step in "${CHECKPOINT_STEPS[@]}"; do
-    subfolder="${HF_PATH_PREFIX}/step-${step}"
-    run_name="${repo_slug}-step-${step}"
-    output_dir="${RESULTS_DIR}/${run_name}"
-    merged_path="${MERGED_DIR}/${run_name}"
-    mkdir -p "$output_dir"
-
-    echo "=== Processing ${run_name} ==="
-
-    repo_path=$(uv run huggingface-cli download "$repo_id" --repo-type model)
+  for split in "${SPLITS[@]}"; do
+    output_dir="./saved_models/${model_slug}_multireasoner_sft-${split}"
     
-    model_path="$(resolve_model_path "$repo_path" "$subfolder")"
-    lora_path="$(resolve_adapter_path "$repo_path" "$subfolder")"
+    # 2. Evaluate intermediate checkpoints (LoRA adapters)
+    if [[ -d "$output_dir" ]]; then
+      # Find all subdirectories starting with 'checkpoint-'
+      for ckpt_dir in "$output_dir"/checkpoint-*/; do
+        # Ensure the directory actually exists and isn't an empty glob match
+        [[ -d "$ckpt_dir" ]] || continue
+        
+        ckpt_name=$(basename "$ckpt_dir")
+        echo "=== Evaluating Checkpoint: ${model_slug} (${split}) - ${ckpt_name} ==="
+        
+        # We pass the base model to vllm, and instruct lighteval to overlay the local adapter
+        uv run lighteval vllm \
+          "model_name=${base_model},adapter_name=${ckpt_dir},dtype=bfloat16,generation_parameters={temperature:0.7,top_p:0.95,max_new_tokens:8192}" \
+          "$TASK" --compute-generation-entropy --save-generations --output-dir "$RESULTS_DIR"
+      done
+    else
+      echo "Warning: Local output directory $output_dir not found. Skipping intermediate checkpoints."
+    fi
 
-    uv run python merge_lora.py \
-      --repo-path "$model_path" \
-      --adapter-path "$lora_path" \
-      --merged-path "$merged_path"
-
-    echo "Running lighteval on ${merged_path}..."
+    # 3. Evaluate the final Trained & Merged Model
+    merged_repo="${HF_USER}/${model_slug}_multireasoner_sft-${split}_merged"
+    echo "=== Evaluating final merged model: $merged_repo ==="
+    
     uv run lighteval vllm \
-      "model_name=${merged_path},dtype=bfloat16,generation_parameters={temperature:0.7,top_p:0.95,max_new_tokens:8192}" \
-      "$TASK" --compute-generation-entropy --save-generations --output-dir "$output_dir"
+      "model_name=${merged_repo},dtype=bfloat16,generation_parameters={temperature:0.7,top_p:0.95,max_new_tokens:8192}" \
+      "$TASK" --compute-generation-entropy --save-generations --output-dir "$RESULTS_DIR"
   done
 done

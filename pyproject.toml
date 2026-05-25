@@ -3,10 +3,23 @@ name = "warmstart-eval"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-  "transformers"
+  "transformers",
+  "lighteval[vllm,math]",
+  "peft>=0.19.1",
+  "tokenizers>=0.22.2",
+  "sentencepiece>=0.2.1",
+  "tiktoken>=0.13.0",
+  "pillow>=12.2.0",
+  "trl>=1.4.0",
+  "kernels>=0.14.1",
 ]
 
 [tool.uv.sources]
-lighteval = { git = "https://github.com/belatijagad/lighteval.git" }
+lighteval = { git = "https://github.com/belatijagad/lighteval.git", rev = "e86f070123d54a612c08e072675b6ff67d9082b5" }
+
+[tool.uv]
+override-dependencies = [
+  "vllm==0.19.1",
+]
