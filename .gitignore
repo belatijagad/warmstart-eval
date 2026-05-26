@@ -1,3 +1,8 @@
+wandb/
+saved_models/
+merged/
+results/
+
 # Python-generated files
 __pycache__/
 *.py[oc]

@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "torch",
+  "torchvision",
+  "torchaudio",
   "transformers",
   "lighteval[vllm,math]",
   "peft>=0.19.1",
@@ -16,12 +19,17 @@ dependencies = [
   "kernels>=0.14.1",
   "wandb>=0.27.0",
   "liger-kernel>=0.8.0",
+  "vllm>=0.19.0,<0.20.0",
+  "python-dotenv>=1.2.2",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
 
 [tool.uv.sources]
 lighteval = { git = "https://github.com/belatijagad/lighteval.git", rev = "e86f070123d54a612c08e072675b6ff67d9082b5" }
-
-[tool.uv]
-override-dependencies = [
-  "vllm==0.19.1",
-]
+torch = { index = "pytorch-cu129" }
+torchvision = { index = "pytorch-cu129" }
+torchaudio = { index = "pytorch-cu129" }

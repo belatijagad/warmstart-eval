@@ -21,9 +21,24 @@ def parse_args() -> argparse.Namespace:
     help="LoRA adapter id to merge.",
   )
   parser.add_argument(
+    "--base-revision",
+    default=None,
+    help="Optional base model revision (commit SHA or tag).",
+  )
+  parser.add_argument(
+    "--adapter-revision",
+    default=None,
+    help="Optional adapter revision (commit SHA or tag).",
+  )
+  parser.add_argument(
     "--merged-repo-id",
     default="belati/Qwen2.5-3B-Instruct_multireasoner-u_sft1a_merged",
     help="Target repo id for the merged model.",
+  )
+  parser.add_argument(
+    "--output-dir",
+    default=None,
+    help="Local output directory to save the merged model.",
   )
   parser.add_argument(
     "--hf-token",
@@ -43,14 +58,26 @@ def main() -> None:
   args = parse_args()
   hf_token = args.hf_token or os.getenv("HF_TOKEN")
 
-  base_model = AutoModelForCausalLM.from_pretrained(args.base_model_id)
+  base_model = AutoModelForCausalLM.from_pretrained(
+    args.base_model_id, revision=args.base_revision
+  )
 
-  tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
+  tokenizer = AutoTokenizer.from_pretrained(
+    args.base_model_id, revision=args.base_revision
+  )
 
-  model = PeftModel.from_pretrained(base_model, args.adapter_id)
+  model = PeftModel.from_pretrained(
+    base_model, args.adapter_id, revision=args.adapter_revision
+  )
 
   print("Merging weights (this might take a minute)...")
   merged_model = model.merge_and_unload()
+
+  if args.output_dir:
+    os.makedirs(args.output_dir, exist_ok=True)
+    merged_model.save_pretrained(args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)  # ty:ignore[unresolved-attribute]
+    print(f"Saved merged model to {args.output_dir}.")
 
   if args.no_push:
     print("Skipping push to Hub.")
